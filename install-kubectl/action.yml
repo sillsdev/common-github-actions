@@ -1,0 +1,20 @@
+# https://docs.github.com/en/actions/creating-actions
+name:  Kubectl command
+description:  Installs latest stable version of https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands
+
+
+# https://docs.github.com/en/actions/creating-actions/metadata-syntax-for-github-actions#runs-for-composite-actions
+runs:
+  # https://docs.github.com/en/actions/creating-actions/creating-a-composite-action
+  using: composite
+
+  steps:
+    -
+      shell: bash
+      run: curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+    -
+      shell: bash
+      run: sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+    -
+      shell: bash
+      run: kubectl version
