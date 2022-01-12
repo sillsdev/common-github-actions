@@ -1,0 +1,25 @@
+# https://docs.github.com/en/actions/creating-actions
+name:  Kubectl command
+description:  Expects args that abide by https://kubernetes.io/docs/reference/generated/kubectl/kubectl-commands
+
+inputs:
+  args:
+    required: true
+
+# https://docs.github.com/en/actions/creating-actions/metadata-syntax-for-github-actions#runs-for-composite-actions
+runs:
+  # https://docs.github.com/en/actions/creating-actions/creating-a-composite-action
+  using: composite
+
+  steps:
+    -
+      name: Install latest stable version of kubectl
+      shell: bash
+      run: |
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+          kubectl version
+    -
+      name: Execute command
+      shell: bash
+      run: kubectl ${{ inputs.args }}
