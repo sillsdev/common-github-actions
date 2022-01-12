@@ -8,10 +8,12 @@ Built to be run in an appropriately authorized self-runner provided by LTOps.
 
 ```yaml
 ...
+    runs-on: [self-hosted, <some-app-tag>]
+
     steps:
       -
-        uses: sillsdev/common-github-actions/kubectl@v1
-        with:
-          args: --context ${{ secrets.LTOPS_K8S_STAGING_CONTEXT }} get pods
+        uses: sillsdev/common-github-actions/install-kubectl@v1
+      -
+        run: kubectl --context ${{ secrets.LTOPS_K8S_STAGING_CONTEXT }} get pods
 ...
 ```
