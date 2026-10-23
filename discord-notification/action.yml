@@ -1,0 +1,92 @@
+name: Discord Notification
+description: Send GitHub push or pull request notifications to Discord
+
+inputs:
+  webhook-url:
+    description: Discord incoming webhook URL
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Format and send Discord notification
+      shell: bash
+      env:
+        DISCORD_WEBHOOK_URL: ${{ inputs.webhook-url }}
+        EVENT_NAME: ${{ github.event_name }}
+        REPOSITORY: ${{ github.repository }}
+        ACTOR: ${{ github.actor }}
+        REF_NAME: ${{ github.ref_name }}
+        EVENT_PATH: ${{ github.event_path }}
+        SERVER_URL: ${{ github.server_url }}
+      run: |
+        python3 - <<'PY'
+        import json
+        import os
+        import urllib.request
+
+        event_name = os.environ["EVENT_NAME"]
+        repository = os.environ["REPOSITORY"]
+        actor = os.environ["ACTOR"]
+        server_url = os.environ["SERVER_URL"]
+        webhook_url = os.environ["DISCORD_WEBHOOK_URL"]
+
+        with open(os.environ["EVENT_PATH"], encoding="utf-8") as f:
+            event = json.load(f)
+
+        if event_name == "push":
+            branch = event.get("ref", "").removeprefix("refs/heads/")
+            commits = event.get("commits", [])
+
+            lines = [
+                f"• [`{c['id'][:7]}`]({server_url}/{repository}/commit/{c['id']}) "
+                f"{c.get('message', '').splitlines()[0]}"
+                for c in commits
+            ]
+
+            message = (
+                f"**Push to `{repository}` / `{branch}`**\n"
+                f"By: {actor}\n\n"
+                + ("\n".join(lines) if lines else "No commit details provided.")
+            )
+
+            compare = event.get("compare")
+            if compare:
+                message += f"\n\n[Compare changes]({compare})"
+
+        elif event_name == "pull_request":
+            pr = event["pull_request"]
+            action = event.get("action", "updated")
+            number = pr["number"]
+            title = pr.get("title", "(untitled)")
+            url = pr.get("html_url", f"{server_url}/{repository}/pull/{number}")
+            author = pr.get("user", {}).get("login", "unknown")
+
+            message = (
+                f"**Pull request {action}: {repository}#{number}**\n"
+                f"[{title}]({url})\n"
+                f"Author: {author} · Event by: {actor}"
+            )
+
+        else:
+            raise SystemExit(f"Unsupported event: {event_name}")
+
+        # Discord limits webhook message content to 2000 characters.
+        if len(message) > 1900:
+            message = message[:1890] + "…"
+
+        payload = json.dumps({
+            "content": message,
+            "allowed_mentions": {"parse": []}
+        }).encode("utf-8")
+
+        request = urllib.request.Request(
+            webhook_url,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        with urllib.request.urlopen(request, timeout=15) as response:
+            print(f"Discord returned HTTP {response.status}")
+        PY
