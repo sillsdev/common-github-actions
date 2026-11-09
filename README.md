@@ -68,3 +68,55 @@ The action detects the GitHub event type automatically and formats the notificat
 - Each consuming repository controls its own workflow triggers, including branches and pull request event types.
 - The action does not require checking out the repository.
 - Pull request workflows triggered from forks generally cannot access repository secrets. Notifications for those pull requests require additional consideration.
+
+## Slack Notification
+
+The `slack-notification` action sends GitHub push and pull request notifications to a Slack channel using a Slack incoming webhook.
+
+### Usage
+
+Add a workflow to your repository under `.github/workflows/slack-notification.yml`:
+
+```yaml
+name: Slack Notifications
+
+on:
+  push:
+    branches:
+      - master
+      - develop
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - closed
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: sillsdev/common-github-actions/slack-notification@main
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+```
+
+Replace the branch names and event types with those appropriate for your repository. For example, a repository using `main` as its default branch can configure `main` instead of `master`.
+
+### Configuration
+
+| Input         | Required | Description                                             |
+| ------------- | -------- | ------------------------------------------------------- |
+| `webhook-url` | Yes      | Slack incoming webhook URL for the destination channel. |
+
+Create an incoming webhook for the destination channel in a Slack app (see [Sending messages using incoming webhooks](https://api.slack.com/messaging/webhooks)), then configure the `SLACK_WEBHOOK_URL` Actions secret in the consuming repository, or use an organization-level secret shared by selected repositories.
+
+The action detects the GitHub event type automatically and formats the notification accordingly:
+
+- **Push:** repository, branch, pusher, commit summaries, and a comparison link when available.
+- **Pull request:** repository, pull request number and title, author, and event action.
+
+### Notes
+
+- Each consuming repository controls its own workflow triggers, including branches and pull request event types.
+- The action does not require checking out the repository.
+- Pull request workflows triggered from forks generally cannot access repository secrets. Notifications for those pull requests require additional consideration.
