@@ -1,0 +1,105 @@
+name: Slack Notification
+description: Send GitHub push or pull request notifications to Slack
+
+inputs:
+  webhook-url:
+    description: Slack incoming webhook URL
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Format and send Slack notification
+      shell: bash
+      env:
+        SLACK_WEBHOOK_URL: ${{ inputs.webhook-url }}
+        EVENT_NAME: ${{ github.event_name }}
+        REPOSITORY: ${{ github.repository }}
+        ACTOR: ${{ github.actor }}
+        EVENT_PATH: ${{ github.event_path }}
+        SERVER_URL: ${{ github.server_url }}
+      run: |
+        python3 - <<'PY'
+        import json
+        import os
+        import urllib.error
+        import urllib.request
+
+        event_name = os.environ["EVENT_NAME"]
+        repository = os.environ["REPOSITORY"]
+        actor = os.environ["ACTOR"]
+        server_url = os.environ["SERVER_URL"]
+        webhook_url = os.environ["SLACK_WEBHOOK_URL"]
+
+        def escape(text):
+            # Slack mrkdwn requires &, < and > to be escaped
+            return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+        with open(os.environ["EVENT_PATH"], encoding="utf-8") as f:
+            event = json.load(f)
+
+        if event_name == "push":
+            branch = event.get("ref", "").removeprefix("refs/heads/")
+            commits = event.get("commits", [])
+
+            lines = [
+                f"• <{server_url}/{repository}/commit/{c['id']}|`{c['id'][:7]}`> "
+                f"{escape(c.get('message', '').splitlines()[0] if c.get('message') else '')}"
+                for c in commits
+            ]
+
+            message = (
+                f"*Push to `{repository}` / `{branch}`*\n"
+                f"By: {escape(actor)}\n\n"
+                + ("\n".join(lines) if lines else "No commit details provided.")
+            )
+
+            compare = event.get("compare")
+            if compare:
+                message += f"\n\n<{compare}|Compare changes>"
+
+        elif event_name == "pull_request":
+            pr = event["pull_request"]
+            action = event.get("action", "updated")
+            number = pr["number"]
+            title = pr.get("title", "(untitled)")
+            url = pr.get("html_url", f"{server_url}/{repository}/pull/{number}")
+            author = pr.get("user", {}).get("login", "unknown")
+
+            message = (
+                f"*Pull request {action}: {repository}#{number}*\n"
+                f"<{url}|{escape(title)}>\n"
+                f"Author: {escape(author)} · Event by: {escape(actor)}"
+            )
+
+        else:
+            raise SystemExit(f"Unsupported event: {event_name}")
+
+        # Slack truncates message text beyond 4000 characters.
+        if len(message) > 3900:
+            message = message[:3890] + "…"
+
+        payload = json.dumps({
+            "text": message,
+            "unfurl_links": False,
+            "unfurl_media": False
+        }).encode("utf-8")
+
+        request = urllib.request.Request(
+            webhook_url,
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "SILSlackNotifier/1.0"
+            },
+            method="POST",
+        )
+
+        try:
+            with urllib.request.urlopen(request, timeout=15) as response:
+                print(f"Slack returned HTTP {response.status}")
+        except urllib.error.HTTPError as e:
+            print(f"Slack returned HTTP {e.code}")
+            print(e.read().decode("utf-8", errors="replace"))
+            raise
+        PY
